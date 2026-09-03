@@ -1,0 +1,9 @@
+
+tree_env/
+*.exe
+*.dbf
+*.zip
+*.tar.gz
+__pycache__/
+.vscode/
+

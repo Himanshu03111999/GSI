@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>GSI – National Geochemical Atlas & CGWB Spatial Analysis Portal</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+
+    <style>
+        :root {
+            --gsi-navy: #0f172a;
+            --gsi-blue: #1e3a8a;
+            --gsi-accent: #2563eb;
+            --sidebar-bg: #f8fafc;
+            --border-color: #e2e8f0;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; display: flex; flex-direction: column; height: 100vh; color: var(--text-main); background: #ffffff; }
+
+        /* Top Tabs */
+        .top-tabs {
+            display: flex;
+            background: #f1f5f9;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+        }
+        .tab-btn.active {
+            color: var(--gsi-navy);
+            background: #ffffff;
+            border-bottom-color: var(--gsi-accent);
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: white;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1001;
+            border-bottom: 3px solid #fbbf24;
+        }
+
+        .header-title { display: flex; align-items: center; gap: 16px; }
+        .header-title h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+        .header-title p { margin: 2px 0 0 0; font-size: 12px; opacity: 0.8; font-weight: 300; }
+        .badge { background: #fbbf24; color: #0f172a; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; margin-left: 8px; }
+
+        /* Common dashboard layout */
+        .dashboard-container {
+            display: flex;
+            flex-grow: 1;
+            height: calc(100vh - 63px);
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 360px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.03);
+        }
+
+        .panel-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .panel-card h3 { margin: 0 0 12px 0; font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--gsi-blue); letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+
+        .control-group { margin-bottom: 12px; }
+        .control-group:last-child { margin-bottom: 0; }
+        label { font-weight: 600; font-size: 12px; color: var(--text-main); display: block; margin-bottom: 6px; }
+
+        input[type="file"], select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+            background: #ffffff;
+            color: var(--text-main);
+            transition: border-color 0.2s;
+        }
+
+        input[type="file"]:focus, select:focus { border-color: var(--gsi-accent); outline: none; }
+
+        .btn-primary {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--gsi-accent);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+        .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+        .status-box { font-size: 12px; color: #15803d; font-weight: 600; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 10px; border-radius: 6px; }
+
+        /* Point Inspector */
+        .inspector { background: #ffffff; border: 1px solid var(--border-color); border-left: 4px solid var(--gsi-accent); border-radius: 8px; padding: 14px; font-size: 12px; }
+        .inspector h4 { margin: 0 0 8px 0; color: var(--gsi-navy); font-size: 13px; font-weight: 700; text-transform: uppercase; }
+
+        /* Map Canvas */
+        .map-container { flex-grow: 1; height: 100%; background: #e2e8f0; }
+
+        /* Map Custom Legend */
+        .legend { background: rgba(255, 255, 255, 0.95); padding: 12px 16px; line-height: 22px; color: var(--text-main); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 12px; border: 1px solid var(--border-color); backdrop-filter: blur(4px); }
+        .legend h4 { margin: 0 0 8px 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--gsi-navy); border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+        .legend i { width: 16px; height: 16px; float: left; margin-right: 8px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.1); }
+
+        /* App panels */
+        .app-panel { display: none; height: 100%; }
+        .app-panel.active { display: flex; }
+    </style>
+</head>
+<body>
+
+<!-- Top Tabs -->
+<div class="top-tabs">
+    <button class="tab-btn active" data-tab="ngcm">GSI – National Geochemical Atlas</button>
+    <button class="tab-btn" data-tab="cgwb">CGWB – District Groundwater</button>
+</div>
+
+<header>
+    <div class="header-title">
+        <div>
+            <h1 id="appTitle">Geological Survey of India <span class="badge">GSI Portal</span></h1>
+            <p id="appSubtitle">National Geochemical Mapping (NGCM) Atlas & Interpolation Engine</p>
+        </div>
+    </div>
+</header>
+
+<!-- NGCM App Panel -->
+<div id="ngcmPanel" class="app-panel active">
+    <div class="dashboard-container">
+        <div class="sidebar" id="ngcmSidebar">
+            <!-- Step 1: Data Import -->
+            <div class="panel-card">
+                <h3>📂 1. Data Import</h3>
+                <div class="control-group">
+                    <label>Sample Database (.xlsx, .csv):</label>
+                    <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" />
+                </div>
+                <div class="control-group">
+                    <label>KML Boundary (.kml): <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
+                    <input type="file" id="kmlFile" accept=".kml" />
+                </div>
+            </div>
+
+            <!-- Step 2: Layer & Parameter Selection -->
+            <div class="panel-card">
+                <h3>🧪 2. Parameter Control</h3>
+                <div class="control-group">
+                    <label>Geochemical Element:</label>
+                    <select id="elementSelect" disabled>
+                        <option>Upload Excel dataset first...</option>
+                    </select>
+                </div>
+                <button id="renderBtn" class="btn-primary" disabled>
+                    <span>⚡ Compute High-Res Surface</span>
+                </button>
+            </div>
+
+            <!-- Status & Logs -->
+            <div id="status" class="status-box">System Ready. Please load dataset to proceed.</div>
+
+            <!-- Point Inspector Output -->
+            <div class="inspector">
+                <h4>Inspector Window</h4>
+                <div id="inspectText" style="color: var(--text-muted);">Click on any grid cell to view coordinate values.</div>
+            </div>
+        </div>
+
+        <div id="map" class="map-container"></div>
+    </div>
+</div>
+
+<!-- CGWB App Panel -->
+<div id="cgwbPanel" class="app-panel">
+    <div class="dashboard-container">
+        <div class="sidebar" id="cgwbSidebar">
+            <!-- Step 1: Data Import -->
+            <div class="panel-card">
+                <h3>📂 1. Data Import</h3>
+                <div class="control-group">
+                    <label>CGWB Data File (.xlsx, .csv):</label>
+                    <input type="file" id="cgwbExcelFile" accept=".xlsx, .xls, .csv" />
+                </div>
+                <div class="control-group">
+                    <label>KML Boundary (.kml): <small style="color:var(--text-muted);">(Optional)</small></label>
+                    <input type="file" id="cgwbKmlFile" accept=".kml" />
+                </div>
+            </div>
+
+            <!-- Step 2: District & Parameter Selection -->
+            <div class="panel-card">
+                <h3>📍 2. District & Parameter</h3>
+
+                <div class="control-group">
+                    <label>District Column (from Excel):</label>
+                    <select id="cgwbDistrictColSelect" disabled>
+                        <option>Upload dataset first...</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label style="color: var(--gsi-accent);">Select Target District:</label>
+                    <select id="cgwbDistrictFilter" disabled>
+                        <option value="">-- Select district column first --</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Target Parameter (Water Table / Potentiometric):</label>
+                    <select id="cgwbElementSelect" disabled>
+                        <option>Upload dataset first...</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Visualization Layers:</label>
+                    <div class="checkbox-group" style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+                        <input type="checkbox" id="cgwbChkInterpolation" checked />
+                        <label for="cgwbChkInterpolation" style="margin:0; font-weight:400;">IDW Heatmap Surface</label>
+                    </div>
+                    <div class="checkbox-group" style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+                        <input type="checkbox" id="cgwbChkContours" checked />
+                        <label for="cgwbChkContours" style="margin:0; font-weight:400;">Isoline Contour Lines</label>
+                    </div>
+                    <div class="checkbox-group" style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+                        <input type="checkbox" id="cgwbChkPoints" checked />
+                        <label for="cgwbChkPoints" style="margin:0; font-weight:400;">Show Stations / Wells</label>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Contour Interval Step (meters):</label>
+                    <input type="number" id="cgwbContourInterval" value="2" step="0.1" min="0.01" />
+                </div>
+
+                <button id="cgwbRenderBtn" class="btn-primary" disabled>
+                    <span>⚡ Render District Surface</span>
+                </button>
+            </div>
+
+            <div id="cgwbStatus" class="status-box">System Ready. Please load CGWB telemetry dataset to proceed.</div>
+
+            <div class="inspector">
+                <h4>Inspector Window</h4>
+                <div id="cgwbInspectText" style="color: var(--text-muted);">Click on any grid cell to view estimated values.</div>
+            </div>
+        </div>
+
+        <div id="cgwbMap" class="map-container"></div>
+    </div>
+</div>
+
+<script>
+    // -------------------------
+    // Tab Switching Logic
+    // -------------------------
+    var tabButtons = document.querySelectorAll('.tab-btn');
+    var ngcmPanel = document.getElementById('ngcmPanel');
+    var cgwbPanel = document.getElementById('cgwbPanel');
+    var appTitle = document.getElementById('appTitle');
+    var appSubtitle = document.getElementById('appSubtitle');
+
+    var ngcmMap, cgwbMap;
+
+    tabButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            tabButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (btn.dataset.tab === 'ngcm') {
+                ngcmPanel.classList.add('active');
+                cgwbPanel.classList.remove('active');
+                appTitle.innerHTML = 'Geological Survey of India <span class="badge">GSI Portal</span>';
+                appSubtitle.textContent = 'National Geochemical Mapping (NGCM) Atlas & Interpolation Engine';
+                setTimeout(function() {
+                    if (!ngcmMap) initNGCMMap();
+                    ngcmMap.invalidateSize();
+                }, 50);
+            } else {
+                ngcmPanel.classList.remove('active');
+                cgwbPanel.classList.add('active');
+                appTitle.innerHTML = 'CGWB Spatial Analysis Portal <span class="badge">CGWB Portal</span>';
+                appSubtitle.textContent = 'District Groundwater Level Telemetry Engine';
+                setTimeout(function() {
+                    if (!cgwbMap) initCGWBMap();
+                    cgwbMap.invalidateSize();
+                }, 50);
+            }
+        });
+    });
+
+    // -------------------------
+    // NGCM App (GSI) Logic
+    // -------------------------
+    function initNGCMMap() {
+        var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: 'Map data &copy; Google'
+        });
+
+        var googleSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: 'Map data &copy; Google'
+        });
+
+        var osmMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+        });
+
+        ngcmMap = L.map('map', {
+            center: [22.9734, 78.6569],
+            zoom: 5,
+            layers: [googleHybrid]
+        });
+
+        var baseMaps = {
+            "Google Satellite (Hybrid)": googleHybrid,
+            "Google Satellite (Pure)": googleSat,
+            "OpenStreetMap": osmMap
+        };
+        L.control.layers(baseMaps).addTo(ngcmMap);
+
+        var parsedData = [];
+        var kmlPolygons = []; 
+        var kmlLayer = null;
+        var canvasOverlay = null;
+        var legendControl = null;
+        var currentGridMatrix = null;
+
+        // Excel Parser
+        document.getElementById('excelFile').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                var data = new Uint8Array(event.target.result);
+                var workbook = XLSX.read(data, {type: 'array'});
+                parsedData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+                if (parsedData.length === 0) return;
+
+                var headers = Object.keys(parsedData[0]);
+                var elementSelect = document.getElementById('elementSelect');
+                elementSelect.innerHTML = '';
+
+                headers.forEach(function(header) {
+                    var hLower = header.toLowerCase();
+                    if (!hLower.includes('long') && !hLower.includes('lat') && header !== 'Sr.No.' && header !== 'TOPOSHEET No.') {
+                        var option = document.createElement('option');
+                        option.value = header;
+                        option.textContent = header;
+                        elementSelect.appendChild(option);
+                    }
+                });
+
+                elementSelect.disabled = false;
+                document.getElementById('renderBtn').disabled = false;
+                document.getElementById('status').innerText = '✓ Successfully loaded ' + parsedData.length + ' geochemical samples.';
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // KML Parser
+        document.getElementById('kmlFile').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                var parser = new DOMParser();
+                var kmlDoc = parser.parseFromString(event.target.result, 'text/xml');
+                var geojson = toGeoJSON.kml(kmlDoc);
+
+                kmlPolygons = [];
+                if (kmlLayer) ngcmMap.removeLayer(kmlLayer);
+
+                kmlLayer = L.geoJSON(geojson, {
+                    style: {
+                        color: '#fbbf24',
+                        weight: 2.5,
+                        fillOpacity: 0
+                    }
+                }).addTo(ngcmMap);
+
+                geojson.features.forEach(function(feat) {
+                    if (feat.geometry.type === 'Polygon') {
+                        kmlPolygons.push(feat.geometry.coordinates[0]);
+                    } else if (feat.geometry.type === 'MultiPolygon') {
+                        feat.geometry.coordinates.forEach(function(poly) {
+                            kmlPolygons.push(poly[0]);
+                        });
+                    }
+                });
+
+                if (kmlLayer.getBounds().isValid()) {
+                    ngcmMap.fitBounds(kmlLayer.getBounds());
+                }
+
+                document.getElementById('status').innerText = '✓ Boundary mask activated (' + kmlPolygons.length + ' polygon[s]).';
+            };
+            reader.readAsText(file);
+        });
+
+        function isPointInPolygon(lon, lat, polygon) {
+            var inside = false;
+            for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                var xi = polygon[i][0], yi = polygon[i][1];
+                var xj = polygon[j][0], yj = polygon[j][1];
+
+                var intersect = ((yi > lat) !== (yj > lat)) &&
+                    (lon < (xj - xi) * (lat - yi) / (yj - yi || 0.00001) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function isPointInKML(lon, lat) {
+            if (kmlPolygons.length === 0) return true; 
+            for (var i = 0; i < kmlPolygons.length; i++) {
+                if (isPointInPolygon(lon, lat, kmlPolygons[i])) return true;
+            }
+            return false;
+        }
+
+        // High-Resolution IDW Raster Engine
+        document.getElementById('renderBtn').addEventListener('click', function() {
+            var selectedElement = document.getElementById('elementSelect').value;
+            if (!selectedElement || parsedData.length === 0) return;
+
+            var points = [];
+            parsedData.forEach(function(row) {
+                var lonKey = Object.keys(row).find(k => k.toLowerCase().includes('long') || k.toLowerCase() === 'x');
+                var latKey = Object.keys(row).find(k => k.toLowerCase().includes('lat') || k.toLowerCase() === 'y');
+                var lon = parseFloat(row[lonKey]);
+                var lat = parseFloat(row[latKey]);
+                var val = parseFloat(row[selectedElement]);
+
+                if (!isNaN(lon) && !isNaN(lat) && !isNaN(val)) {
+                    points.push({ lon: lon, lat: lat, val: val });
+                }
+            });
+
+            if (points.length === 0) return;
+
+            document.getElementById('status').innerText = 'Computing high-resolution interpolation grid...';
+
+            setTimeout(function() {
+                var insidePoints = (kmlPolygons.length > 0) 
+                    ? points.filter(p => isPointInKML(p.lon, p.lat))
+                    : points;
+
+                var targetPoints = insidePoints.length > 0 ? insidePoints : points;
+
+                var minVal = Math.min(...targetPoints.map(p => p.val));
+                var maxVal = Math.max(...targetPoints.map(p => p.val));
+
+                var minLon = Math.min(...points.map(p => p.lon)), maxLon = Math.max(...points.map(p => p.lon));
+                var minLat = Math.min(...points.map(p => p.lat)), maxLat = Math.max(...points.map(p => p.lat));
+
+                if (kmlPolygons.length > 0) {
+                    var kmlBounds = kmlLayer.getBounds();
+                    minLon = kmlBounds.getWest();
+                    maxLon = kmlBounds.getEast();
+                    minLat = kmlBounds.getSouth();
+                    maxLat = kmlBounds.getNorth();
+                }
+
+                var padLon = (maxLon - minLon) * 0.02 || 0.005;
+                var padLat = (maxLat - minLat) * 0.02 || 0.005;
+
+                var bounds = [[minLat - padLat, minLon - padLon], [maxLat + padLat, maxLon + padLon]];
+
+                var latDistanceMeters = (maxLat - minLat + 2 * padLat) * 111000;
+                var lonDistanceMeters = (maxLon - minLon + 2 * padLon) * 111000 * Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+
+                var targetCellSizeMeters = 100;
+                var rows = Math.max(Math.round(latDistanceMeters / targetCellSizeMeters), 600);
+                var cols = Math.max(Math.round(lonDistanceMeters / targetCellSizeMeters), 600);
+
+                rows = Math.min(rows, 1000);
+                cols = Math.min(cols, 1000);
+
+                var canvas = document.createElement('canvas');
+                canvas.width = cols;
+                canvas.height = rows;
+                var ctx = canvas.getContext('2d');
+                var imgData = ctx.createImageData(cols, rows);
+
+                var maxRadiusSq = Math.pow(0.20, 2);
+
+                currentGridMatrix = {
+                    minLon: minLon - padLon, maxLon: maxLon + padLon,
+                    minLat: minLat - padLat, maxLat: maxLat + padLat,
+                    rows: rows, cols: cols,
+                    minVal: minVal, maxVal: maxVal,
+                    elementName: selectedElement,
+                    points: points
+                };
+
+                for (var r = 0; r < rows; r++) {
+                    var gridLat = maxLat + padLat - (r / rows) * ((maxLat + padLat) - (minLat - padLat));
+                    for (var c = 0; c < cols; c++) {
+                        var gridLon = minLon - padLon + (c / cols) * ((maxLon + padLon) - (minLon - padLon));
+                        var idx = (r * cols + c) * 4;
+
+                        if (!isPointInKML(gridLon, gridLat)) {
+                            imgData.data[idx + 3] = 0;
+                            continue;
+                        }
+                        
+                        var num = 0, den = 0;
+                        for (var i = 0; i < points.length; i++) {
+                            var dLon = gridLon - points[i].lon;
+                            var dLat = gridLat - points[i].lat;
+                            var distSq = dLon * dLon + dLat * dLat;
+
+                            if (distSq < 0.0000001) {
+                                num = points[i].val;
+                                den = 1;
+                                break;
+                            }
+
+                            if (distSq <= maxRadiusSq) {
+                                var w = 1 / (distSq * distSq);
+                                num += w * points[i].val;
+                                den += w;
+                            }
+                        }
+
+                        var val = (den > 0) ? (num / den) : minVal;
+                        var norm = (val - minVal) / (maxVal - minVal || 1);
+
+                        var color = get4ClassColor(norm);
+                        imgData.data[idx] = color.r;
+                        imgData.data[idx+1] = color.g;
+                        imgData.data[idx+2] = color.b;
+                        imgData.data[idx+3] = 200;
+                    }
+                }
+
+                ctx.putImageData(imgData, 0, 0);
+
+                if (canvasOverlay) ngcmMap.removeLayer(canvasOverlay);
+                canvasOverlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: 1.0 }).addTo(ngcmMap);
+
+                ngcmMap.fitBounds(bounds);
+                document.getElementById('status').innerText = '✓ Grid generation complete for ' + selectedElement + '.';
+                updateLegend(minVal, maxVal, selectedElement);
+            }, 50);
+        });
+
+        ngcmMap.on('click', function(e) {
+            if (!currentGridMatrix) return;
+
+            var lat = e.latlng.lat;
+            var lon = e.latlng.lng;
+            var m = currentGridMatrix;
+
+            if (lon < m.minLon || lon > m.maxLon || lat < m.minLat || lat > m.maxLat) return;
+
+            if (!isPointInKML(lon, lat)) {
+                document.getElementById('inspectText').innerHTML = '<em>Coordinate outside designated KML boundary.</em>';
+                return;
+            }
+
+            var num = 0, den = 0;
+            for (var i = 0; i < m.points.length; i++) {
+                var dLon = lon - m.points[i].lon;
+                var dLat = lat - m.points[i].lat;
+                var distSq = dLon * dLon + dLat * dLat;
+                if (distSq < 0.0000001) { num = m.points[i].val; den = 1; break; }
+                var w = 1 / (distSq * distSq);
+                num += w * m.points[i].val;
+                den += w;
+            }
+
+            var value = (den > 0) ? (num / den) : m.minVal;
+
+            document.getElementById('inspectText').innerHTML = 
+                '<strong>Latitude:</strong> ' + lat.toFixed(5) + '°N<br>' +
+                '<strong>Longitude:</strong> ' + lon.toFixed(5) + '°E<br>' +
+                '<span style="color:var(--gsi-accent); font-size:14px; font-weight:700;">' + 
+                m.elementName + ': ' + value.toFixed(3) + ' ppm</span>';
+        });
+
+        function get4ClassColor(t) {
+            t = Math.max(0, Math.min(1, t));
+            if (t < 0.25) return { r: 30, g: 144, b: 255 };
+            if (t < 0.50) return { r: 50, g: 205, b: 50 };
+            if (t < 0.75) return { r: 255, g: 215, b: 0 };
+            return { r: 220, g: 20, b: 60 };
+        }
+
+        function updateLegend(min, max, paramName) {
+            if (legendControl) ngcmMap.removeControl(legendControl);
+            legendControl = L.control({position: 'bottomright'});
+            legendControl.onAdd = function () {
+                var div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = '<h4>' + paramName + ' Concentration</h4>';
+
+                var step = (max - min) / 4;
+                var classRanges = [
+                    { color: '#1E90FF', label: min.toFixed(2) + ' – ' + (min + step).toFixed(2) + ' (Low)' },
+                    { color: '#32CD32', label: (min + step).toFixed(2) + ' – ' + (min + 2 * step).toFixed(2) + ' (Med-Low)' },
+                    { color: '#FFD700', label: (min + 2 * step).toFixed(2) + ' – ' + (min + 3 * step).toFixed(2) + ' (Med-High)' },
+                    { color: '#DC143C', label: (min + 3 * step).toFixed(2) + ' – ' + max.toFixed(2) + ' (Anomaly High)' }
+                ];
+
+                for (var i = 0; i < classRanges.length; i++) {
+                    div.innerHTML += '<i style="background:' + classRanges[i].color + '"></i> ' + classRanges[i].label + '<br>';
+                }
+                return div;
+            };
+            legendControl.addTo(ngcmMap);
+        }
+    }
+
+    initNGCMMap();
+
+    // -------------------------
+    // CGWB App Logic
+    // -------------------------
+    function initCGWBMap() {
+        var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: 'Map data &copy; Google'
+        });
+        var osmMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+            maxZoom: 18, attribution: '&copy; OpenStreetMap contributors'
+        });
+
+        cgwbMap = L.map('cgwbMap', { center: [22.9734, 78.6569], zoom: 5, layers: [googleHybrid] });
+        L.control.layers({ "Google Satellite": googleHybrid, "OpenStreetMap": osmMap }).addTo(cgwbMap);
+
+        var cgwbDatasetRows = [];
+        var cgwbHeaders = [];
+        var cgwbKmlPolygons = []; 
+        var cgwbKmlLayer = null;
+        var cgwbCanvasOverlay = null;
+        var cgwbContourLayerGroup = L.layerGroup().addTo(cgwbMap);
+        var cgwbPointsLayerGroup = L.layerGroup().addTo(cgwbMap);
+        var cgwbLegendControl = null;
+        var cgwbCurrentGridMatrix = null;
+
+        var cgwbLatIdx = -1;
+        var cgwbLonIdx = -1;
+
+        // Excel Parser
+        document.getElementById('cgwbExcelFile').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('cgwbStatus').innerText = 'Parsing dataset...';
+
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    var data = new Uint8Array(event.target.result);
+                    var workbook = XLSX.read(data, { type: 'array', dense: true, cellStyles: false, cellFormulas: false });
+                    var sheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[sheetName];
+
+                    var rawMatrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: "" });
+
+                    if (!rawMatrix || rawMatrix.length < 2) {
+                        document.getElementById('cgwbStatus').innerText = '❌ Error: Data file is empty.';
+                        return;
+                    }
+
+                    cgwbHeaders = rawMatrix[0].map(h => String(h).trim());
+                    cgwbDatasetRows = rawMatrix.slice(1);
+
+                    var districtColSelect = document.getElementById('cgwbDistrictColSelect');
+                    var elementSelect = document.getElementById('cgwbElementSelect');
+
+                    districtColSelect.innerHTML = '';
+                    elementSelect.innerHTML = '';
+
+                    cgwbHeaders.forEach(function(header, idx) {
+                        if (header !== "") {
+                            districtColSelect.add(new Option(header, idx));
+                            elementSelect.add(new Option(header, idx));
+                        }
+                    });
+
+                    // Auto-detect Latitude / Longitude columns by name
+                    cgwbLatIdx = cgwbHeaders.findIndex(h => h.toLowerCase() === 'latitude');
+                    cgwbLonIdx = cgwbHeaders.findIndex(h => h.toLowerCase() === 'longitude');
+
+                    // Try to guess district column (first one containing 'district')
+                    var distGuess = cgwbHeaders.findIndex(h => h.toLowerCase().includes('district'));
+                    if (distGuess >= 0) districtColSelect.value = distGuess;
+
+                    // Try to guess water table / potentiometric parameter column
+                    var elemGuess = cgwbHeaders.findIndex(h =>
+                        h.includes('Groundwater Level Telemetry') ||
+                        h.toLowerCase().includes('water table') ||
+                        h.toLowerCase().includes('potentiometric') ||
+                        h === 'RL_MSL' ||
+                        h.toLowerCase().includes('water level')
+                    );
+
+                    if (elemGuess >= 0) elementSelect.value = elemGuess;
+
+                    populateCGWBDistrictFilter();
+
+                    districtColSelect.disabled = false;
+                    elementSelect.disabled = false;
+                    document.getElementById('cgwbDistrictFilter').disabled = false;
+                    document.getElementById('cgwbRenderBtn').disabled = false;
+
+                    document.getElementById('cgwbStatus').innerText = '✓ Dataset loaded. Select a district to calculate.';
+                } catch (err) {
+                    console.error(err);
+                    document.getElementById('cgwbStatus').innerText = '❌ Parse error: ' + err.message;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('cgwbDistrictColSelect').addEventListener('change', populateCGWBDistrictFilter);
+
+        function populateCGWBDistrictFilter() {
+            var distIdx = parseInt(document.getElementById('cgwbDistrictColSelect').value);
+            var districtFilter = document.getElementById('cgwbDistrictFilter');
+            districtFilter.innerHTML = '';
+
+            if (isNaN(distIdx)) {
+                districtFilter.add(new Option('-- Select valid district column --', ''));
+                return;
+            }
+
+            var districtMap = new Map();
+            cgwbDatasetRows.forEach(row => {
+                var val = row[distIdx];
+                if (val === null || val === undefined) return;
+                var str = String(val).trim();
+                if (str !== '') {
+                    var key = str.toUpperCase();
+                    districtMap.set(key, str);
+                }
+            });
+
+            if (districtMap.size === 0) {
+                districtFilter.add(new Option('-- No districts found --', ''));
+                return;
+            }
+
+            var sortedKeys = Array.from(districtMap.keys()).sort();
+            sortedKeys.forEach(key => {
+                districtFilter.add(new Option(districtMap.get(key), key));
+            });
+        }
+
+        // KML Handler
+        document.getElementById('cgwbKmlFile').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                var parser = new DOMParser();
+                var kmlDoc = parser.parseFromString(event.target.result, 'text/xml');
+                var geojson = toGeoJSON.kml(kmlDoc);
+
+                cgwbKmlPolygons = [];
+                if (cgwbKmlLayer) cgwbMap.removeLayer(cgwbKmlLayer);
+
+                cgwbKmlLayer = L.geoJSON(geojson, { style: { color: '#fbbf24', weight: 2.5, fillOpacity: 0 } }).addTo(cgwbMap);
+
+                geojson.features.forEach(function(feat) {
+                    if (feat.geometry.type === 'Polygon') {
+                        cgwbKmlPolygons.push(feat.geometry.coordinates[0]);
+                    } else if (feat.geometry.type === 'MultiPolygon') {
+                        feat.geometry.coordinates.forEach(function(poly) { cgwbKmlPolygons.push(poly[0]); });
+                    }
+                });
+
+                if (cgwbKmlLayer.getBounds().isValid()) cgwbMap.fitBounds(cgwbKmlLayer.getBounds());
+                document.getElementById('cgwbStatus').innerText = '✓ KML boundary mask applied.';
+            };
+            reader.readAsText(file);
+        });
+
+        function cgwbIsPointInPolygon(lon, lat, polygon) {
+            var inside = false;
+            for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                var xi = polygon[i][0], yi = polygon[i][1];
+                var xj = polygon[j][0], yj = polygon[j][1];
+                var intersect = ((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi || 0.00001) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function cgwbIsPointInKML(lon, lat) {
+            if (cgwbKmlPolygons.length === 0) return true; 
+            for (var i = 0; i < cgwbKmlPolygons.length; i++) {
+                if (cgwbIsPointInPolygon(lon, lat, cgwbKmlPolygons[i])) return true;
+            }
+            return false;
+        }
+
+        // District Renderer Engine (Potentiometric / Water Table)
+        document.getElementById('cgwbRenderBtn').addEventListener('click', function() {
+            var elemIdx = parseInt(document.getElementById('cgwbElementSelect').value);
+            var distIdx = parseInt(document.getElementById('cgwbDistrictColSelect').value);
+            var selectedDistrict = document.getElementById('cgwbDistrictFilter').value;
+
+            if (cgwbLatIdx < 0 || cgwbLonIdx < 0 || isNaN(elemIdx) || isNaN(distIdx) || !selectedDistrict || cgwbDatasetRows.length === 0) {
+                document.getElementById('cgwbStatus').innerText = '❌ Please ensure Latitude, Longitude, District, and Parameter columns are valid and a district is selected.';
+                return;
+            }
+
+            var selectedElementName = cgwbHeaders[elemIdx];
+            var stationIdx = cgwbHeaders.findIndex(h => h.toLowerCase().includes('station'));
+
+            var doInterpolation = document.getElementById('cgwbChkInterpolation').checked;
+            var doContours = document.getElementById('cgwbChkContours').checked;
+            var doPoints = document.getElementById('cgwbChkPoints').checked;
+            var cInterval = parseFloat(document.getElementById('cgwbContourInterval').value) || 2;
+
+            cgwbPointsLayerGroup.clearLayers();
+            cgwbContourLayerGroup.clearLayers();
+            if (cgwbCanvasOverlay) { cgwbMap.removeLayer(cgwbCanvasOverlay); cgwbCanvasOverlay = null; }
+
+            var points = [];
+            cgwbDatasetRows.forEach(function(row) {
+                var lat = parseFloat(row[cgwbLatIdx]);
+                var lon = parseFloat(row[cgwbLonIdx]);
+                var val = parseFloat(row[elemIdx]);
+
+                var rowDistRaw = row[distIdx];
+                var rowDist = (rowDistRaw === null || rowDistRaw === undefined) ? '' : String(rowDistRaw).trim().toUpperCase();
+
+                if (rowDist !== selectedDistrict.toUpperCase()) return;
+
+                if (!isNaN(lon) && !isNaN(lat) && !isNaN(val)) {
+                    var stationName = (stationIdx >= 0 && row[stationIdx]) ? row[stationIdx] : 'Station';
+                    points.push({ lon: lon, lat: lat, val: val, station: stationName });
+
+                    if (doPoints) {
+                        L.circleMarker([lat, lon], {
+                            radius: 4, fillColor: '#ffffff', color: '#000000', weight: 1, opacity: 1, fillOpacity: 0.8
+                        }).bindPopup('<b>' + stationName + '</b><br>' + selectedElementName + ': ' + val + ' m').addTo(cgwbPointsLayerGroup);
+                    }
+                }
+            });
+
+            if (points.length === 0) {
+                document.getElementById('cgwbStatus').innerText = '❌ No data points found for selected district.';
+                return;
+            }
+
+            document.getElementById('cgwbStatus').innerText = 'Rendering District: ' + selectedDistrict + '...';
+
+            setTimeout(function() {
+                var minVal = Math.min(...points.map(p => p.val));
+                var maxVal = Math.max(...points.map(p => p.val));
+
+                var minLon = Math.min(...points.map(p => p.lon)), maxLon = Math.max(...points.map(p => p.lon));
+                var minLat = Math.min(...points.map(p => p.lat)), maxLat = Math.max(...points.map(p => p.lat));
+
+                if (cgwbKmlPolygons.length > 0) {
+                    var kmlBounds = cgwbKmlLayer.getBounds();
+                    minLon = kmlBounds.getWest(); maxLon = kmlBounds.getEast();
+                    minLat = kmlBounds.getSouth(); maxLat = kmlBounds.getNorth();
+                }
+
+                var padLon = (maxLon - minLon) * 0.05 || 0.01;
+                var padLat = (maxLat - minLat) * 0.05 || 0.01;
+                var bounds = [[minLat - padLat, minLon - padLon], [maxLat + padLat, maxLon + padLon]];
+
+                var rows = 120, cols = 120;
+                var grid = new Array(rows).fill(0).map(() => new Array(cols).fill(null));
+
+                var canvas = document.createElement('canvas');
+                canvas.width = cols; canvas.height = rows;
+                var ctx = canvas.getContext('2d');
+                var imgData = ctx.createImageData(cols, rows);
+
+                cgwbCurrentGridMatrix = {
+                    minLon: minLon - padLon, maxLon: maxLon + padLon,
+                    minLat: minLat - padLat, maxLat: maxLat + padLat,
+                    rows: rows, cols: cols, minVal: minVal, maxVal: maxVal,
+                    elementName: selectedElementName, points: points
+                };
+
+                for (var r = 0; r < rows; r++) {
+                    var gridLat = maxLat + padLat - (r / rows) * ((maxLat + padLat) - (minLat - padLat));
+                    for (var c = 0; c < cols; c++) {
+                        var gridLon = minLon - padLon + (c / cols) * ((maxLon + padLon) - (minLon - padLon));
+                        var idx = (r * cols + c) * 4;
+
+                        if (!cgwbIsPointInKML(gridLon, gridLat)) {
+                            imgData.data[idx + 3] = 0;
+                            continue;
+                        }
+
+                        var num = 0, den = 0;
+                        for (var i = 0; i < points.length; i++) {
+                            var dLon = gridLon - points[i].lon;
+                            var dLat = gridLat - points[i].lat;
+                            var distSq = dLon * dLon + dLat * dLat;
+
+                            if (distSq < 0.0000001) { num = points[i].val; den = 1; break; }
+                            var w = 1 / (distSq * distSq);
+                            num += w * points[i].val; den += w;
+                        }
+
+                        var val = (den > 0) ? (num / den) : minVal;
+                        grid[r][c] = val;
+
+                        if (doInterpolation) {
+                            var norm = (val - minVal) / (maxVal - minVal || 1);
+                            var color = cgwbGet4ClassColor(norm);
+                            imgData.data[idx] = color.r;
+                            imgData.data[idx+1] = color.g;
+                            imgData.data[idx+2] = color.b;
+                            imgData.data[idx+3] = 190;
+                        } else {
+                            imgData.data[idx + 3] = 0;
+                        }
+                    }
+                }
+
+                if (doInterpolation) {
+                    ctx.putImageData(imgData, 0, 0);
+                    cgwbCanvasOverlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: 0.95 }).addTo(cgwbMap);
+                }
+
+                if (doContours) {
+                    var startLevel = Math.ceil(minVal / cInterval) * cInterval;
+                    for (var level = startLevel; level <= maxVal; level += cInterval) {
+                        cgwbGenerateIsolines(grid, level, rows, cols, cgwbCurrentGridMatrix);
+                    }
+                }
+
+                cgwbMap.fitBounds(bounds);
+                document.getElementById('cgwbStatus').innerText = '✓ Completed rendering for District: ' + selectedDistrict;
+                cgwbUpdateLegend(minVal, maxVal, selectedElementName, doInterpolation, doContours, cInterval);
+            }, 10);
+        });
+
+        function cgwbGenerateIsolines(grid, threshold, rows, cols, matrix) {
+            var lines = [];
+            for (var r = 0; r < rows - 1; r++) {
+                for (var c = 0; c < cols - 1; c++) {
+                    var v0 = grid[r][c], v1 = grid[r][c+1], v2 = grid[r+1][c+1], v3 = grid[r+1][c];
+                    if (v0 === null || v1 === null || v2 === null || v3 === null) continue;
+
+                    var cellCode = 0;
+                    if (v0 >= threshold) cellCode |= 8;
+                    if (v1 >= threshold) cellCode |= 4;
+                    if (v2 >= threshold) cellCode |= 2;
+                    if (v3 >= threshold) cellCode |= 1;
+
+                    if (cellCode === 0 || cellCode === 15) continue;
+
+                    var top = [c + (threshold - v0) / (v1 - v0 || 0.00001), r];
+                    var right = [c + 1, r + (threshold - v1) / (v2 - v1 || 0.00001)];
+                    var bottom = [c + (threshold - v3) / (v2 - v3 || 0.00001), r + 1];
+                    var left = [c, r + (threshold - v0) / (v3 - v0 || 0.00001)];
+
+                    var lineSegments = [];
+                    switch (cellCode) {
+                        case 1: case 14: lineSegments.push([left, bottom]); break;
+                        case 2: case 13: lineSegments.push([bottom, right]); break;
+                        case 3: case 12: lineSegments.push([left, right]); break;
+                        case 4: case 11: lineSegments.push([top, right]); break;
+                        case 5: lineSegments.push([left, top], [bottom, right]); break;
+                        case 6: case 9: lineSegments.push([top, bottom]); break;
+                        case 7: case 8: lineSegments.push([left, top]); break;
+                        case 10: lineSegments.push([top, right], [left, bottom]); break;
+                    }
+
+                    lineSegments.forEach(seg => {
+                        var lat1 = matrix.maxLat - (seg[0][1] / rows) * (matrix.maxLat - matrix.minLat);
+                        var lon1 = matrix.minLon + (seg[0][0] / cols) * (matrix.maxLon - matrix.minLon);
+                        var lat2 = matrix.maxLat - (seg[1][1] / rows) * (matrix.maxLat - matrix.minLat);
+                        var lon2 = matrix.minLon + (seg[1][0] / cols) * (matrix.maxLon - matrix.minLon);
+
+                        lines.push([[lat1, lon1], [lat2, lon2]]);
+                    });
+                }
+            }
+
+            if (lines.length > 0) {
+                L.polyline(lines, { color: '#0f172a', weight: 1.2, opacity: 0.85 })
+                 .bindTooltip('Contour: ' + threshold.toFixed(1) + ' m', { sticky: true })
+                 .addTo(cgwbContourLayerGroup);
+            }
+        }
+
+        cgwbMap.on('click', function(e) {
+            if (!cgwbCurrentGridMatrix) return;
+            var lat = e.latlng.lat, lon = e.latlng.lng, m = cgwbCurrentGridMatrix;
+
+            if (lon < m.minLon || lon > m.maxLon || lat < m.minLat || lat > m.maxLat) return;
+            if (!cgwbIsPointInKML(lon, lat)) {
+                document.getElementById('cgwbInspectText').innerHTML = '<em>Outside boundary.</em>';
+                return;
+            }
+
+            var num = 0, den = 0;
+            for (var i = 0; i < m.points.length; i++) {
+                var dLon = lon - m.points[i].lon, dLat = lat - m.points[i].lat;
+                var distSq = dLon * dLon + dLat * dLat;
+                if (distSq < 0.0000001) { num = m.points[i].val; den = 1; break; }
+                var w = 1 / (distSq * distSq);
+                num += w * m.points[i].val; den += w;
+            }
+
+            var value = (den > 0) ? (num / den) : m.minVal;
+            document.getElementById('cgwbInspectText').innerHTML = 
+                '<strong>Latitude:</strong> ' + lat.toFixed(5) + '°N<br>' +
+                '<strong>Longitude:</strong> ' + lon.toFixed(5) + '°E<br>' +
+                '<span style="color:var(--gsi-accent); font-size:14px; font-weight:700;">' + 
+                m.elementName + ': ' + value.toFixed(3) + ' m</span>';
+        });
+
+        function cgwbGet4ClassColor(t) {
+            t = Math.max(0, Math.min(1, t));
+            if (t < 0.25) return { r: 30, g: 144, b: 255 };
+            if (t < 0.50) return { r: 50, g: 205, b: 50 };
+            if (t < 0.75) return { r: 255, g: 215, b: 0 };
+            return { r: 220, g: 20, b: 60 };
+        }
+
+        function cgwbUpdateLegend(min, max, paramName, hasHeatmap, hasContours, cInterval) {
+            if (cgwbLegendControl) cgwbMap.removeControl(cgwbLegendControl);
+            cgwbLegendControl = L.control({position: 'bottomright'});
+            cgwbLegendControl.onAdd = function () {
+                var div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = '<h4>' + paramName + '</h4>';
+
+                if (hasHeatmap) {
+                    var step = (max - min) / 4;
+                    var classRanges = [
+                        { color: '#1E90FF', label: min.toFixed(1) + ' – ' + (min + step).toFixed(1) + ' (Low)' },
+                        { color: '#32CD32', label: (min + step).toFixed(1) + ' – ' + (min + 2 * step).toFixed(1) + ' (Med-Low)' },
+                        { color: '#FFD700', label: (min + 2 * step).toFixed(1) + ' – ' + (min + 3 * step).toFixed(1) + ' (Med-High)' },
+                        { color: '#DC143C', label: (min + 3 * step).toFixed(1) + ' – ' + max.toFixed(1) + ' (High)' }
+                    ];
+                    for (var i = 0; i < classRanges.length; i++) {
+                        div.innerHTML += '<i style="background:' + classRanges[i].color + '"></i> ' + classRanges[i].label + '<br>';
+                    }
+                }
+
+                if (hasContours) {
+                    div.innerHTML += '<div style="margin-top:6px;"><div class="legend-contour-line"></div> Contour Step: ' + cInterval + ' m</div>';
+                }
+                return div;
+            };
+            cgwbLegendControl.addTo(cgwbMap);
+        }
+    }
+</script>
+
+</body>
+</html>
